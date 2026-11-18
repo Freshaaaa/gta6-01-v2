@@ -63,6 +63,22 @@ export function createPlayer(x, y) {
 // table does not know — the police Interceptor — falls back to the base
 // tuning with a small pursuit boost.
 export function makeCar(x, y, angle, kind, rng) {
+  // The money van: an armored box truck that never drives — it parks and
+  // waits to be cracked (see activities.js). 400 hp, so it takes real
+  // firepower to blow up.
+  if (kind === 'van') {
+    return {
+      id: nextCarId++,
+      x, y, angle, speed: 0,
+      color: '#2e4053',
+      model: 'Money Van',
+      kind,
+      hp: 400,
+      maxHp: 400,
+      routeAxis: 'x', routeDir: 1, targetSpeed: 0, turnCooldown: 0,
+      sirenPhase: 0, accel: 0, maxSpeed: 0, turn: 0,
+    };
+  }
   const isPolice = kind === 'police';
   const model = isPolice ? null : pick(rng, CAR_MODELS);
   const accel = isPolice
@@ -230,6 +246,15 @@ export function burstExplosion(state, x, y) {
     const a = state.rng() * Math.PI * 2;
     const s = floatBetween(state.rng, 120, 260);
     addParticle(state, x, y, Math.cos(a) * s, Math.sin(a) * s, 0.6, '#ff9f1c', 4);
+  }
+}
+
+// A burst of green cash for the money-van payout.
+export function burstCash(state, x, y) {
+  for (let i = 0; i < 12; i += 1) {
+    const a = state.rng() * Math.PI * 2;
+    const s = floatBetween(state.rng, 30, 130);
+    addParticle(state, x, y, Math.cos(a) * s, Math.sin(a) * s - 30, 0.8, '#2ecc71', 3);
   }
 }
 
@@ -524,14 +549,15 @@ export function updateParticles(state, dt) {
 // ---- stealing cars ----
 
 // The nearest car the player can steal: on foot, within 70 px, and not
-// already the player's ride.
+// already the player's ride. The money van is armored and never
+// stealable — it is cracked, not driven.
 export function nearestStealableCar(state) {
   const { player, cars } = state;
   if (!player.onFoot) return null;
   let best = null;
   let bestD = 70;
   for (const car of cars) {
-    if (car.kind === 'player' || car.hp <= 0) continue;
+    if (car.kind === 'player' || car.kind === 'van' || car.hp <= 0) continue;
     const d = dist(player.x, player.y, car.x, car.y);
     if (d < bestD) { bestD = d; best = car; }
   }

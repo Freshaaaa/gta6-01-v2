@@ -1,4 +1,4 @@
-// Solmar Bay: Heatwave — the story. Eight missions for Dante "D" Reyes, a
+// Solmar Bay: Heatwave — the story. Ten missions for Dante "D" Reyes, a
 // wheelman fresh out of the Old Harbor docks, and the people who hire him:
 // Rosa, who runs the diner and knows everybody's business; Vince Corso,
 // who runs the Sunset Hills crew; and the rival Saltwater crew, who want
@@ -183,6 +183,51 @@ export const MISSIONS = [
     complete: [
       'VINCE: Three thousand dollars. The casino, the bank, the pier — the whole Bay is yours now, Dante.',
       "ROSA: The diner's renaming the special after you. The Dante: extra hot, gone in sixty seconds.",
+      'VINCE (phone): Enjoy it while it lasts. The Saltwaters are regrouping at the Stadium — I\'ll call.',
+    ],
+  },
+  {
+    id: 'm9',
+    title: 'Stadium Brawl',
+    giver: 'Vince Corso',
+    reward: 1200,
+    briefing: [
+      'VINCE: The Saltwaters are running a chop ring out of Solmar Stadium — six of them, armed, stripping fast cars in the lot.',
+      'VINCE: Go in loud, take the lot back, and grab their ledger. It names every buyer they ever had — and it goes to the Marina Pier.',
+    ],
+    steps: [
+      { type: 'goto', x: LANDMARKS.stadium.x, y: LANDMARKS.stadium.y, radius: 110, label: 'Go to Solmar Stadium' },
+      { type: 'kill', count: 6, spawn: { x: LANDMARKS.stadium.x, y: LANDMARKS.stadium.y }, label: 'Take the Stadium lot back (0/6)' },
+      { type: 'pickup', x: LANDMARKS.stadium.x, y: LANDMARKS.stadium.y, radius: 60, label: 'Grab the ledger (E)', heat: 30 },
+      { type: 'deliver', x: LANDMARKS.pier.x, y: LANDMARKS.pier.y, radius: 90, label: 'Deliver the ledger to the Marina Pier' },
+    ],
+    complete: [
+      'VINCE: The ledger is gold, Dante. Every Saltwater buyer in the Bay, in one book.',
+      'VINCE: $1,200. One job left, and it ends this — the boss himself, at the Lighthouse.',
+    ],
+  },
+  {
+    id: 'm10',
+    title: 'King of the Bay',
+    giver: 'Vince Corso',
+    reward: 4000,
+    briefing: [
+      'VINCE: The Saltwater boss is fleeing by boat from the Lighthouse — his whole cut of the Bay in one duffel bag, sitting in the keeper\'s hut.',
+      'VINCE: Thread the checkpoints through the city, crack the hut, and vanish. Lose every cop in Solmar. Do this and the Bay is yours for good, Dante.',
+    ],
+    steps: [
+      {
+        type: 'timed', label: 'Hit all 4 checkpoints before time runs out', seconds: 180,
+        checkpoints: [
+          { x: 1400, y: 600 }, { x: 2200, y: 1800 }, { x: 1000, y: 2600 }, { x: 2600, y: 3000 },
+        ], heat: 50,
+      },
+      { type: 'hold', x: LANDMARKS.lighthouse.x, y: LANDMARKS.lighthouse.y, radius: 70, seconds: 5, label: 'Crack the keeper\'s hut — hold E', heat: 75 },
+      { type: 'escape', x: LANDMARKS.hideout.x, y: LANDMARKS.hideout.y, radius: 90, label: 'Lose the cops, then reach the Hideout' },
+    ],
+    complete: [
+      'VINCE: Four thousand dollars. The boss is gone, the crew is yours, the Bay is yours.',
+      "ROSA: The Dante special is on the house tonight. Forever.",
       'STORY COMPLETE — Solmar Bay is yours. Courier jobs keep paying at the Hideout.',
     ],
   },

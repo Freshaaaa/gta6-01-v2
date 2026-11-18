@@ -85,20 +85,44 @@ export const CAR_MODELS = [
   { name: 'Cab',     color: '#f5b301', accel: 0.95, maxSpeed: 0.95, turn: 1.0,  hp: 150 },
   { name: 'Hauler',  color: '#5d6d7e', accel: 0.75, maxSpeed: 0.8,  turn: 0.8,  hp: 220 },
   { name: 'Viento',  color: '#1abc9c', accel: 1.15, maxSpeed: 1.15, turn: 1.15, hp: 120 },
+  // Aurora — the fastest car in the Bay, rare and worth stealing: a
+  // low pink supercar with a rear spoiler (see render.js). Chop-shop bait.
+  { name: 'Aurora',  color: '#e84393', accel: 1.4, maxSpeed: 1.35, turn: 1.25, hp: 100 },
 ];
 
 // The chop shop only pays for fast cars.
-export const CHOP_MODELS = ['Strada', 'Viento', 'Falco', 'Vela'];
+export const CHOP_MODELS = ['Strada', 'Viento', 'Falco', 'Vela', 'Aurora'];
 export const CHOP_REWARD = 350;
+
+// Weather: clear, rain and storm cycle on a timer (main.js rolls the
+// change). Rain makes the roads slick — slightly slower, looser driving —
+// and storms throw lightning. The HUD clock line shows the current sky.
+export const WEATHER_CLEAR = 'clear';
+export const WEATHER_RAIN = 'rain';
+export const WEATHER_STORM = 'storm';
+export const WEATHER_MIN_SECONDS = 150;
+export const WEATHER_MAX_SECONDS = 300;
+
+// The money van: a repeatable heist. An armored van roams the city; crack
+// it on foot (hold E, 3 s) for $500 — and 3 stars of heat.
+export const VAN_REWARD = 500;
+export const VAN_HEAT = 75;
+export const VAN_CRACK_SECONDS = 3;
+export const VAN_FIRST_DELAY = 90;
+export const VAN_MIN_DELAY = 150;
+export const VAN_MAX_DELAY = 240;
 
 // Weapons. damage is per bullet (shotgun fires `pellets`); rate is the
 // seconds between shots; price is what the Hideout shop charges.
 export const WEAPONS = {
-  pistol:  { name: 'Pistol',  damage: 25, rate: 0.18, spread: 0.02, pellets: 1, price: 0,   ammoPerShot: 1 },
-  smg:     { name: 'SMG',     damage: 14, rate: 0.07, spread: 0.09, pellets: 1, price: 600, ammoPerShot: 1 },
-  shotgun: { name: 'Shotgun', damage: 16, rate: 0.70, spread: 0.30, pellets: 5, price: 900, ammoPerShot: 2 },
+  pistol:  { name: 'Pistol',  damage: 25, rate: 0.18, spread: 0.02, pellets: 1, price: 0,    ammoPerShot: 1 },
+  smg:     { name: 'SMG',     damage: 14, rate: 0.07, spread: 0.09, pellets: 1, price: 600,  ammoPerShot: 1 },
+  shotgun: { name: 'Shotgun', damage: 16, rate: 0.70, spread: 0.30, pellets: 5, price: 900,  ammoPerShot: 2 },
+  // Rifle — the Hideout's top shelf: long reach, tight spread, fast
+  // tracers. Sold after the shotgun; key 4.
+  rifle:   { name: 'Rifle',   damage: 20, rate: 0.09, spread: 0.03, pellets: 1, price: 1500, ammoPerShot: 1 },
 };
-export const WEAPON_ORDER = ['pistol', 'smg', 'shotgun'];
+export const WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle'];
 
 // Radio stations: the patterns live in radio.js; these are the names and
 // tempos the HUD shows.
@@ -106,6 +130,7 @@ export const RADIO_STATIONS = [
   { name: 'Coastal Groove', bpm: 96 },
   { name: 'Night Drive', bpm: 112 },
   { name: 'Latin Heat', bpm: 124 },
+  { name: 'Bay FM', bpm: 140 },
 ];
 
 export const PED_SHIRTS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#fd79a8', '#00cec9', '#fdcb6e'];

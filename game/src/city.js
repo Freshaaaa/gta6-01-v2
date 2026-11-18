@@ -139,6 +139,18 @@ export function createCity(rng) {
   const pier = { x: LANDMARKS.pier.x - 14, y: LANDMARKS.pier.y, w: 28, h: 220 };
   // The lighthouse, on the sand at the south-west corner.
   const lighthouse = { x: LANDMARKS.lighthouse.x, y: LANDMARKS.lighthouse.y };
+  // The Solmar Plaza fountain — a roundabout in the middle of the square —
+  // and beach umbrellas on the sand, clear of the pier.
+  const fountain = { x: LANDMARKS.plaza.x, y: LANDMARKS.plaza.y, r: 42 };
+  const umbrellas = [];
+  for (let i = 0; i < 8; i += 1) {
+    umbrellas.push({
+      x: floatBetween(rng, 800, 3400),
+      y: WORLD_SIZE - 100 + floatBetween(rng, -12, 12),
+      color: pick(rng, ['#e74c3c', '#f1c40f', '#3498db', '#e84393']),
+      tilt: floatBetween(rng, -0.4, 0.4),
+    });
+  }
 
   // Sun-coin spots: spread over the city, always on a sidewalk or park,
   // never inside a building.
@@ -154,7 +166,7 @@ export function createCity(rng) {
     coins.push({ x, y, taken: false });
   }
 
-  return { buildings, trees, lamps, parks, beach, boats, pier, lighthouse, coins, centers };
+  return { buildings, trees, lamps, parks, beach, boats, pier, lighthouse, fountain, umbrellas, coins, centers };
 }
 
 function makeBuilding(x, y, w, h, district, rng) {

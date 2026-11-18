@@ -62,6 +62,7 @@ export function spawnPolice(state) {
 
 export function updatePolice(state, dt) {
   const { police, player, city } = state;
+  const stars = state.wantedStars();
   for (const unit of police) {
     unit.attackCooldown -= dt;
     unit.ramCooldown -= dt;
@@ -91,13 +92,24 @@ export function updatePolice(state, dt) {
         unit.y = car.y;
         unit.speed = 0;
       } else {
-        const wantAngle = Math.atan2(ty - car.y, tx - car.x);
+        // At 3 stars and up the lead cruiser cuts the player off: it aims
+        // at where the player will be in 0.6 s, not where they are now —
+        // so a straight-line getaway down a long road gets intercepted.
+        let aimX = tx;
+        let aimY = ty;
+        if (stars >= 3 && state.police[0] === unit && player.car) {
+          aimX += Math.cos(player.car.angle) * player.car.speed * 0.6;
+          aimY += Math.sin(player.car.angle) * player.car.speed * 0.6;
+        }
+        const wantAngle = Math.atan2(aimY - car.y, aimX - car.x);
         const steer = Math.sin(wantAngle - car.angle);
         car.angle += clamp(steer * 2.4, -1, 1) * CAR_TURN_RATE * 0.7 * dt
           * Math.min(1, Math.abs(car.speed) / 120 + 0.3);
         // A touch slower than the player's top speed, so a good driver can
-        // actually lose them on the straights.
-        const targetSpeed = Math.min(440, 240 + d * 0.25);
+        // actually lose them on the straights — but at 5 stars the
+        // interceptors close the gap (480 instead of 440).
+        const topSpeed = stars >= 5 ? 480 : 440;
+        const targetSpeed = Math.min(topSpeed, 240 + d * 0.25);
         car.speed += (targetSpeed - car.speed) * Math.min(1, dt * 0.8);
         car.x += Math.cos(car.angle) * car.speed * dt;
         car.y += Math.sin(car.angle) * car.speed * dt;
@@ -122,10 +134,12 @@ export function updatePolice(state, dt) {
         unit.speed = car.speed;
       }
     } else {
-      // On foot: run at the player, punch when close.
+      // On foot: run at the player, punch when close. A cop who is close
+      // sprints (220) instead of jogging (185), so a foot chase stays
+      // dangerous right up to the arrest.
       const wantAngle = Math.atan2(ty - unit.y, tx - unit.x);
       unit.angle = angleLerp(unit.angle, wantAngle, Math.min(1, dt * 6));
-      const speed = 185;
+      const speed = d < 150 ? 220 : 185;
       const nx = unit.x + Math.cos(unit.angle) * speed * dt;
       const ny = unit.y + Math.sin(unit.angle) * speed * dt;
       const fixed = collideCircleBuildings(city, nx, ny, 12);

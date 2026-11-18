@@ -1,14 +1,16 @@
 // Solmar Bay: Heatwave — save / load through localStorage. Saves the
 // player's cash, reputation, turf, collectibles, weapons, health, ammo,
-// wanted heat, position, mission progress and the clock, so a session can
-// be continued from the title screen. Nothing leaves the browser.
+// wanted heat, position, mission progress, money-van heists and the clock,
+// so a session can be continued from the title screen. Nothing leaves
+// the browser. Version 3 adds the vansRobbed count (v2 saves are not
+// loaded — a v2 save restarts at the title screen instead of corrupting).
 
 import { SAVE_KEY } from './config.js';
 
 export function saveGame(state) {
   try {
     const data = {
-      version: 2,
+      version: 3,
       money: state.money,
       rep: state.rep,
       turf: state.turf,
@@ -27,6 +29,7 @@ export function saveGame(state) {
       carsStolen: state.stats.carsStolen,
       taxiDone: state.stats.taxiDone,
       racesWon: state.stats.racesWon,
+      vansRobbed: state.stats.vansRobbed || 0,
       savedAt: Date.now(),
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -41,7 +44,7 @@ export function loadSave() {
     const raw = window.localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || data.version !== 2) return null;
+    if (!data || data.version !== 3) return null;
     return data;
   } catch {
     return null;

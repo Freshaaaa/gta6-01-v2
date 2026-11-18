@@ -25,3 +25,9 @@ export function intBetween(rng, min, max) {
 export function floatBetween(rng, min, max) {
   return min + rng() * (max - min);
 }
+
+// True with probability p (0..1) — a readable roll for one-off events
+// (weather changes, lightning) instead of an inline rng() comparison.
+export function chance(rng, p) {
+  return rng() < p;
+}

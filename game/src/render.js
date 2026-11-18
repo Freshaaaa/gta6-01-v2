@@ -85,6 +85,12 @@ export function createRenderer(canvas) {
   function drawWorld(state) {
     const cam = state.camera;
     const zoom = cam.zoom;
+    // Weather: rain darkens the light and slicks the roads; a storm
+    // darkens them further. The effective daylight drives the night
+    // overlay, lit windows and lamp glows below.
+    const weather = state.weather || { type: 'clear' };
+    const daylight = Math.min(1, daylightFactor(state.clockMinutes)
+      * (weather.type === 'rain' ? 0.7 : weather.type === 'storm' ? 0.45 : 1));
     // Screen shake: a dying random offset while the world shakes.
     const shx = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
     const shy = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
@@ -152,6 +158,29 @@ export function createRenderer(canvas) {
     // The lighthouse, on the sand.
     drawLighthouse(state, city.lighthouse, inView);
 
+    // Solmar Plaza fountain + beach umbrellas.
+    const f = city.fountain;
+    if (f && inView(f.x, f.y, 120)) {
+      ctx.fillStyle = '#7ec8e3';
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#b8e6f5';
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r * 0.55, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#5d9b4a';
+      ctx.beginPath(); ctx.arc(f.x, f.y, 8, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const u of city.umbrellas) {
+      if (!inView(u.x, u.y, 60)) continue;
+      ctx.save();
+      ctx.translate(u.x, u.y);
+      ctx.rotate(u.tilt);
+      ctx.fillStyle = u.color;
+      ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI, 0); ctx.fill();
+      ctx.strokeStyle = '#6d4c41';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 12); ctx.stroke();
+      ctx.restore();
+    }
+
     // City blocks (sidewalk slabs).
     ctx.fillStyle = '#b9b3a4';
     for (let bx = 0; bx < ROAD_COUNT - 1; bx += 1) {
@@ -164,7 +193,8 @@ export function createRenderer(canvas) {
     }
 
     // Roads: asphalt with a centre line, edge dashes and crosswalks.
-    ctx.fillStyle = '#3a3f47';
+    // Wet asphalt in the rain: a shade lighter, like a sheen.
+    ctx.fillStyle = weather.type === 'clear' ? '#3a3f47' : '#484e59';
     for (let i = 0; i < ROAD_COUNT; i += 1) {
       const c = ROAD_FIRST + i * ROAD_GAP;
       ctx.fillRect(0, c - ROAD_WIDTH / 2, WORLD_SIZE, ROAD_WIDTH);
@@ -204,7 +234,6 @@ export function createRenderer(canvas) {
 
     // Buildings: pseudo-3D — a long sun shadow, extruded side faces and a
     // roof with windows. Towers downtown rise higher.
-    const daylight = daylightFactor(state.clockMinutes);
     const sun = sunShadow(state.clockMinutes);
     for (const b of city.buildings) {
       if (!inView(b.x + b.w / 2, b.y + b.h / 2, 220)) continue;
@@ -233,6 +262,12 @@ export function createRenderer(canvas) {
       if (b.tower) {
         ctx.fillStyle = (Math.floor(state.time * 2) % 2 === 0) ? '#ff2d2d' : '#7a1010';
         ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      // Neon signs on the Strip after dark — one colour per building.
+      if (b.district === 'The Strip' && daylight < 0.4) {
+        const neon = Math.floor(b.x + b.y) % 3;
+        ctx.fillStyle = neon === 0 ? 'rgba(255,46,99,0.85)' : neon === 1 ? 'rgba(0,206,201,0.85)' : 'rgba(241,196,15,0.85)';
+        ctx.fillRect(b.x + 8, b.y + b.h - 10, b.w - 16, 5);
       }
     }
     // Landmark labels.
@@ -348,6 +383,13 @@ export function createRenderer(canvas) {
         ctx.beginPath(); ctx.arc(next.x, next.y, 30 * pulse, 0, Math.PI * 2); ctx.stroke();
       }
     }
+    // Money van: an orange ring so the heist is findable.
+    if (state.van) {
+      const pulse = 1 + Math.sin(state.time * 4) * 0.15;
+      ctx.strokeStyle = '#ff8c42';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(state.van.car.x, state.van.car.y, 40 * pulse, 0, Math.PI * 2); ctx.stroke();
+    }
 
     drawCars(state, inView, daylight);
     drawHeli(state, inView, daylight);
@@ -404,6 +446,22 @@ export function createRenderer(canvas) {
       ctx.fillStyle = 'rgba(255,140,60,0.10)';
       ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
     }
+    // Rain: diagonal streaks across the view, heavier in a storm.
+    if (weather.type !== 'clear') {
+      ctx.strokeStyle = 'rgba(200,220,255,0.28)';
+      ctx.lineWidth = 1.5;
+      const streaks = weather.type === 'storm' ? 140 : 90;
+      for (let i = 0; i < streaks; i += 1) {
+        const sx = vx0 + ((i * 173 + state.time * 700) % (vw + 120)) - 60;
+        const sy = vy0 + ((i * 311 + state.time * 1400) % (vh + 120)) - 60;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - 7, sy + 20); ctx.stroke();
+      }
+    }
+    // Lightning flash in a storm.
+    if (state.weatherFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.35, state.weatherFlash * 2)})`;
+      ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
+    }
   }
 
   function drawLighthouse(state, lh, inView) {
@@ -441,6 +499,27 @@ export function createRenderer(canvas) {
     ctx.save();
     ctx.translate(car.x, car.y);
     ctx.rotate(car.angle);
+    if (car.model === 'Money Van') {
+      // Armored box truck: tall box body, a dollar on the side.
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(-29 + 3, -13 + 4, 58, 26);
+      ctx.fillStyle = car.color;
+      roundRect(-29, -13, 58, 26, 5);
+      ctx.fill();
+      ctx.fillStyle = '#dfe6e9';
+      ctx.fillRect(20, -10, 8, 20);
+      ctx.fillStyle = '#2ecc71';
+      ctx.font = '700 14px ' + FONT;
+      ctx.textAlign = 'center';
+      ctx.fillText('$', -6, 5);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-27, -16, 8, 4);
+      ctx.fillRect(-27, 12, 8, 4);
+      ctx.fillRect(19, -16, 8, 4);
+      ctx.fillRect(19, 12, 8, 4);
+      ctx.restore();
+      return;
+    }
     const L = car.model === 'Hauler' ? 58 : 46;
     const W = 22;
     // Shadow.
@@ -476,6 +555,13 @@ export function createRenderer(canvas) {
       ctx.font = '700 6px ' + FONT;
       ctx.textAlign = 'center';
       ctx.fillText('TAXI', 1, -W / 2 - 4);
+    }
+    if (car.model === 'Aurora') {
+      // Rear spoiler on the fastest car in the Bay.
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-L / 2 - 4, -W / 2 - 1, 4, W + 2);
+      ctx.fillStyle = '#e84393';
+      ctx.fillRect(-L / 2 - 6, -W / 2 - 1, 2, W + 2);
     }
     if (car.kind === 'police') {
       // Light bar, flashing red/blue.
@@ -653,8 +739,8 @@ export function createRenderer(canvas) {
 
   function drawBullets(state) {
     for (const b of state.bullets) {
-      // Tracer: a short line along the flight path.
-      ctx.strokeStyle = '#f7dc6f';
+      // Tracer: a short line along the flight path, in the weapon's colour.
+      ctx.strokeStyle = b.color || '#f7dc6f';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(b.x - b.vx * 0.02, b.y - b.vy * 0.02);
@@ -712,9 +798,10 @@ export function createRenderer(canvas) {
     }
     if (state.heli) text('HELI OVERHEAD', viewW - 202, 78, 12, '#ff8c42', 'left', true);
 
-    // Clock + district, top centre.
+    // Clock + district + weather, top centre.
     const district = districtAt(p.x, p.y);
-    text(`${clockText(state.clockMinutes)}  •  ${district.name.toUpperCase()}`, viewW / 2, 30, 15, '#fff', 'center', true);
+    const weatherLabel = state.weather && state.weather.type !== 'clear' ? `  •  ${state.weather.type.toUpperCase()}` : '';
+    text(`${clockText(state.clockMinutes)}  •  ${district.name.toUpperCase()}${weatherLabel}`, viewW / 2, 30, 15, '#fff', 'center', true);
     text(extras.radioStation ? `RADIO: ${extras.radioStation}` : '', viewW / 2, 50, 12, '#ffd97a', 'center');
     text(state.muted ? 'MUTED (M)' : '', viewW / 2, 66, 12, '#bbb', 'center');
 
@@ -739,6 +826,10 @@ export function createRenderer(canvas) {
         : 'TAXI — passenger waiting, drive up to them';
     } else if (state.race) {
       statusLine = `STREET RACE — checkpoint ${state.race.index + 1}/${state.race.checkpoints.length}  (${Math.ceil(state.race.timeLeft)}s)`;
+    } else if (state.van) {
+      statusLine = state.vanCracking
+        ? `MONEY VAN — cracking… ${Math.ceil(state.van.crackLeft)}s — keep holding E`
+        : 'MONEY VAN nearby — hold E on foot to crack it for $500';
     }
     if (statusLine) {
       ctx.font = `700 15px ${FONT}`;
@@ -772,7 +863,7 @@ export function createRenderer(canvas) {
     }
 
     // Controls hint, bottom left.
-    text('WASD move/drive • E enter car / interact • Click shoot • F punch • Q weapon • R radio • T taxi • Y race • P pause • H help', 16, viewH - 14, 12, 'rgba(255,255,255,0.65)');
+    text('WASD move/drive • E enter car / interact • Click shoot • F punch • Q / 1–4 weapon • R radio • T taxi • Y race • P pause • H help', 16, viewH - 14, 12, 'rgba(255,255,255,0.65)');
     // Crosshair when on foot with a gun.
     if (p.onFoot && state.ammo > 0) {
       const mx = extras.mouseX;
@@ -927,8 +1018,8 @@ export function createRenderer(canvas) {
         text(item, viewW / 2, y, 19, '#eee', 'center');
       }
     });
-    text('WASD move & drive  •  E steal car / talk  •  Click shoot  •  F punch  •  Q weapon  •  R radio', viewW / 2, viewH * 0.78, 15, '#ccc', 'center');
-    text('8 story missions  •  helicopter police  •  taxi fares & street races  •  3 weapons  •  20 sun-coins  •  turf ledger', viewW / 2, viewH * 0.82, 14, '#aaa', 'center');
+    text('WASD move & drive  •  E steal car / talk  •  Click shoot  •  F punch  •  Q / 1–4 weapon  •  R radio', viewW / 2, viewH * 0.78, 15, '#ccc', 'center');
+    text('10 story missions  •  helicopter police  •  taxi fares & street races  •  money-van heists  •  4 weapons  •  20 sun-coins  •  rain & storms  •  turf ledger', viewW / 2, viewH * 0.82, 14, '#aaa', 'center');
     text('A make.fun entry — an original game. Nothing here is from any Rockstar game.', viewW / 2, viewH - 24, 12, '#888', 'center');
     if (extras.helpOpen) drawHelp();
   }
@@ -944,9 +1035,11 @@ export function createRenderer(canvas) {
     const lines = [
       'WASD / arrows — walk, run (Shift), drive when in a car',
       'E — steal a car, talk, pick up, crack the vault, buy at the Hideout',
-      'Mouse — aim. Click — shoot. F — punch. Q / 1 / 2 / 3 — switch weapon',
+      'Mouse — aim. Click — shoot. F — punch. Q / 1 / 2 / 3 / 4 — switch weapon',
       'T — start a taxi fare (on foot, near a pedestrian)',
       'Y — start a street race (in a car). R — change radio station',
+      'Money vans roam the city — hold E beside one to crack it for $500.',
+      'Rain makes the roads slick: slower, looser driving. Storms bring lightning.',
       'Follow the yellow marker: it is your next objective.',
       'Crimes raise your wanted stars. Cops chase, ram and arrest.',
       'At 3 stars a police helicopter joins and keeps the heat on you.',
@@ -965,8 +1058,8 @@ export function createRenderer(canvas) {
     ctx.fillRect(0, 0, viewW, viewH);
     text('PAUSED', viewW / 2, viewH * 0.26, 56, '#fff', 'center', true);
     const turfCount = Object.keys(state.turf || {}).length;
-    text(`Cash $${state.money.toLocaleString('en-US')}  •  Rep ${state.rep}  •  Missions ${state.stats.missionsDone}/8  •  Sun-coins ${state.coinsCollected}/20  •  Turf ${turfCount}/8 districts`, viewW / 2, viewH * 0.26 + 36, 15, '#ffd97a', 'center');
-    text(`Kills ${state.stats.kills}  •  Cars stolen ${state.stats.carsStolen}  •  Taxi fares ${state.stats.taxiDone}  •  Races won ${state.stats.racesWon}`, viewW / 2, viewH * 0.26 + 60, 14, '#ccc', 'center');
+    text(`Cash $${state.money.toLocaleString('en-US')}  •  Rep ${state.rep}  •  Missions ${state.stats.missionsDone}/10  •  Sun-coins ${state.coinsCollected}/20  •  Turf ${turfCount}/8 districts`, viewW / 2, viewH * 0.26 + 36, 15, '#ffd97a', 'center');
+    text(`Kills ${state.stats.kills}  •  Cars stolen ${state.stats.carsStolen}  •  Taxi fares ${state.stats.taxiDone}  •  Races won ${state.stats.racesWon}  •  Vans cracked ${state.stats.vansRobbed || 0}`, viewW / 2, viewH * 0.26 + 60, 14, '#ccc', 'center');
     const items = ['▶  RESUME  (P)', 'SAVE GAME', 'HOW TO PLAY  (H)', 'QUIT TO TITLE'];
     items.forEach((item, i) => {
       const y = viewH * 0.46 + i * 44;
@@ -1013,6 +1106,6 @@ export function createRenderer(canvas) {
   return { draw, resize };
 }
 
-const WEAPON_LABEL = { pistol: 'PISTOL', smg: 'SMG', shotgun: 'SHOTGUN' };
+const WEAPON_LABEL = { pistol: 'PISTOL', smg: 'SMG', shotgun: 'SHOTGUN', rifle: 'RIFLE' };
 
 export { DISTRICTS };

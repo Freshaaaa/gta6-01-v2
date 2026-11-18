@@ -2,17 +2,18 @@
 // frame, the world advances in fixed 1/60 s steps, and the renderer paints
 // what is there. The game moves between title, play, paused and game over.
 //
-// ?seed=N fixes the city and traffic. ?shot=start|foot|drive|chase|mission|heli
+// ?seed=N fixes the city and traffic. ?shot=start|foot|drive|chase|mission|heli|van
 // (with &seed=N) stages that scene instead of running the loop, paints it
 // twice and sets window.__shotReady for a screenshot.
 import {
   CAR_ACCEL, CAR_BRAKE, CAR_DRAG, CAR_MAX_REVERSE, CAR_MAX_SPEED,
-  CAR_REVERSE_ACCEL, CAR_TURN_RATE, CLOCK_START_MINUTES, HELI_MIN_STARS,
+  CAR_MODELS, CAR_REVERSE_ACCEL, CAR_TURN_RATE, CLOCK_START_MINUTES, HELI_MIN_STARS,
   LANDMARKS, PLAYER_MAX_HEALTH, PLAYER_RADIUS, PLAYER_RUN_SPEED,
-  PLAYER_WALK_SPEED, RADIO_STATIONS, ROAD_WIDTH, SECONDS_PER_GAME_HOUR, STEP, WEAPONS,
+  PLAYER_WALK_SPEED, RADIO_STATIONS, ROAD_WIDTH, SECONDS_PER_GAME_HOUR, STEP,
+  VAN_FIRST_DELAY, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS, WEAPONS,
   WEAPON_ORDER, WORLD_SIZE,
 } from './config.js';
-import { createRandom } from './rng.js';
+import { chance, createRandom } from './rng.js';
 import { createCity, collideCircleBuildings, nearestRoad } from './city.js';
 import { createInput } from './input.js';
 import { createAudio } from './radio.js';
@@ -28,7 +29,8 @@ import { fireWeapon } from './weapons.js';
 import { MISSIONS, makeCourierJob, objectiveText } from './missions.js';
 import {
   checkCollectibles, chopShopPrompt, shopPrompt, startRace, startTaxiFare,
-  tryBuyWeapon, tryChopShop, updateRace, updateTaxi,
+  startVan, tryBuyWeapon, tryChopShop, updateRace, updateTaxi, updateVan,
+  vanPrompt,
 } from './activities.js';
 import { clearSave, hasSave, loadSave, saveGame } from './save.js';
 import { SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, createRenderer, daylightFactor } from './render.js';
@@ -81,7 +83,7 @@ function createGameState(seedValue) {
     toastTimer: 0,
     gunfireTimer: 0,
     carrying: false,
-    stats: { kills: 0, missionsDone: 0, carsStolen: 0, taxiDone: 0, racesWon: 0, faresEarned: 0, shotsFired: 0 },
+    stats: { kills: 0, missionsDone: 0, carsStolen: 0, taxiDone: 0, racesWon: 0, faresEarned: 0, shotsFired: 0, vansRobbed: 0 },
     events: [],
     screen: SCREEN_TITLE,
     menuIndex: 0,
@@ -100,6 +102,14 @@ function createGameState(seedValue) {
     race: null,
     chopWanted: 'Strada',
     shake: 0,
+    // Weather: clear / rain / storm, on a 150–300 s timer; a storm throws
+    // lightning (weatherFlash, drawn by render.js). The money van roams
+    // on its own timer (see activities.js).
+    weather: { type: 'clear', timer: 200 },
+    weatherFlash: 0,
+    van: null,
+    vanTimer: VAN_FIRST_DELAY,
+    vanCracking: false,
     wantedStars() { return wantedStarsOf(this.wantedHeat); },
   };
   // Parked cars in roadside bays (on the road strip, offset from the lane so
@@ -365,9 +375,13 @@ function updatePlayer(state, dt, input) {
   const down = input.isHeld('down');
   const left = input.isHeld('left');
   const right = input.isHeld('right');
+  // Rain makes the roads slick: 8% off the top speed and 10% off the
+  // steering, so a storm getaway feels different from a dry one.
+  const slick = (state.weather && state.weather.type !== 'clear') ? 0.92 : 1;
+  const steerGrip = (state.weather && state.weather.type !== 'clear') ? 0.9 : 1;
   const accel = CAR_ACCEL * (car.accel || 1);
-  const maxSpeed = CAR_MAX_SPEED * (car.maxSpeed || 1);
-  const turnRate = CAR_TURN_RATE * (car.turn || 1);
+  const maxSpeed = CAR_MAX_SPEED * (car.maxSpeed || 1) * slick;
+  const turnRate = CAR_TURN_RATE * (car.turn || 1) * steerGrip;
   if (up) car.speed += accel * dt;
   else if (down) {
     if (car.speed > 30) car.speed -= CAR_BRAKE * dt;
@@ -520,8 +534,38 @@ function tryPunch(state, audio) {
 function switchWeapon(state, id) {
   if (!state.weaponsOwned[id] || state.weapon === id) return;
   state.weapon = id;
+  // A fresh weapon is ready to fire at once: switching out of the
+  // shotgun's slow 0.70 s cycle must not leave the new gun dead for the
+  // rest of that cycle.
+  state.player.shootCooldown = 0;
   state.toast = `${WEAPONS[id].name.toUpperCase()} READY`;
   state.toastTimer = 1.5;
+}
+
+// ---- weather ----
+
+// The sky changes on a timer: clear -> rain -> storm/clear -> ... . Rain
+// darkens the light and slicks the roads (render.js and updatePlayer read
+// state.weather); a storm throws a lightning flash every few seconds.
+function updateWeather(state, dt) {
+  const w = state.weather;
+  w.timer -= dt;
+  state.weatherFlash = Math.max(0, (state.weatherFlash || 0) - dt);
+  if (w.type === 'storm' && chance(state.rng, dt * 0.12)) {
+    state.weatherFlash = 0.18;
+  }
+  if (w.timer > 0) return;
+  const prev = w.type;
+  const roll = state.rng();
+  let next = 'clear';
+  if (prev === 'clear') next = roll < 0.45 ? 'rain' : 'clear';
+  else if (prev === 'rain') next = roll < 0.3 ? 'storm' : roll < 0.7 ? 'clear' : 'rain';
+  else next = roll < 0.6 ? 'rain' : 'clear';
+  w.type = next;
+  w.timer = WEATHER_MIN_SECONDS + state.rng() * (WEATHER_MAX_SECONDS - WEATHER_MIN_SECONDS);
+  if (next === 'rain') { state.toast = 'RAIN ROLLING IN — the roads are getting slick'; state.toastTimer = 3; }
+  else if (next === 'storm') { state.toast = 'STORM OVER SOLMAR BAY — lightning, slick roads'; state.toastTimer = 3; }
+  else if (prev !== 'clear') { state.toast = "The rain clears — sun's back over the Bay"; state.toastTimer = 3; }
 }
 
 // ---- wanted & police ----
@@ -676,6 +720,9 @@ function stepWorld(state, dt, input, audio) {
     state.autoSaveTimer = 60;
     saveGame(state);
   }
+  // Weather + rain audio, every step.
+  updateWeather(state, dt);
+  audio.rain(state.weather.type !== 'clear');
 
   // Dialogue first: E or click dismisses it, nothing else acts.
   if (state.dialogue) {
@@ -712,7 +759,7 @@ function stepWorld(state, dt, input, audio) {
   if (input.takePressed('help')) state.helpOpen = !state.helpOpen;
   if (input.takePressed('radio')) {
     const name = audio.nextStation();
-    state.radioStation = (state.radioStation + 1) % 3;
+    state.radioStation = (state.radioStation + 1) % RADIO_STATIONS.length;
     state.toast = `RADIO — ${name}`;
     state.toastTimer = 2;
   }
@@ -724,6 +771,7 @@ function stepWorld(state, dt, input, audio) {
   if (input.takePressed('weapon1')) switchWeapon(state, 'pistol');
   if (input.takePressed('weapon2')) switchWeapon(state, 'smg');
   if (input.takePressed('weapon3')) switchWeapon(state, 'shotgun');
+  if (input.takePressed('weapon4')) switchWeapon(state, 'rifle');
 
   // Side jobs: T starts a taxi fare on foot, Y starts a street race.
   if (input.takePressed('taxi') && state.player.onFoot && !state.taxi) {
@@ -789,6 +837,7 @@ function stepWorld(state, dt, input, audio) {
   updatePickups(state, dt);
   updateTaxi(state, dt, audio);
   updateRace(state, dt, audio);
+  updateVan(state, dt, audio);
   updateMarker(state);
   checkCollectibles(state, audio);
   checkMissionStep(state, dt, audio);
@@ -812,6 +861,7 @@ function stepWorld(state, dt, input, audio) {
     const car = nearestStealableCar(state);
     if (car) state.prompt = `Press E to steal the ${car.model}`;
     else if (nearShop && shopPrompt(state)) state.prompt = shopPrompt(state);
+    else if (vanPrompt(state)) state.prompt = vanPrompt(state);
     else if (mission && mission.steps[state.stepIndex] && mission.steps[state.stepIndex].type === 'talk'
       && dist(state.player.x, state.player.y, mission.steps[state.stepIndex].x, mission.steps[state.stepIndex].y) < 100) {
       state.prompt = 'Press E to talk';
@@ -881,6 +931,7 @@ function applySave(state, data) {
   state.stats.carsStolen = data.carsStolen;
   state.stats.taxiDone = data.taxiDone || 0;
   state.stats.racesWon = data.racesWon || 0;
+  state.stats.vansRobbed = data.vansRobbed || 0;
   state.camera.x = data.x;
   state.camera.y = data.y;
   state.currentMission = null;
@@ -1021,7 +1072,7 @@ function runGame() {
 function runShot(name) {
   const input = createInput(canvas);
   // Deterministic golden-hour-ish clock per scene.
-  const clocks = { start: 17 * 60 + 20, foot: 10 * 60, drive: 12 * 60, chase: 18 * 60 + 30, mission: 10 * 60 + 30, heli: 21 * 60 + 10 };
+  const clocks = { start: 17 * 60 + 20, foot: 10 * 60, drive: 12 * 60, chase: 18 * 60 + 30, mission: 10 * 60 + 30, heli: 21 * 60 + 10, van: 16 * 60 };
   state.clockMinutes = clocks[name] ?? 10 * 60;
   state.screen = SCREEN_PLAY;
 
@@ -1108,6 +1159,20 @@ function runShot(name) {
       updateGoons(state, STEP);
       state.time += STEP;
     }
+  } else if (name === 'van') {
+    // The money-van heist in the rain: the van parked at the docks, the
+    // player on foot beside it, 2 stars of heat already on the clock.
+    state.weather.type = 'rain';
+    state.weather.timer = 600;
+    state.player.x = LANDMARKS.docks.x + 40;
+    state.player.y = LANDMARKS.docks.y + 40;
+    state.camera.x = state.player.x;
+    state.camera.y = state.player.y;
+    state.camera.zoom = 1.0;
+    startVan(state, { x: LANDMARKS.docks.x - 40, y: LANDMARKS.docks.y });
+    state.wantedHeat = 50;
+    startMission(state, MISSIONS[0]);
+    state.dialogue = null;
   }
 
   let painted = 0;
@@ -1133,6 +1198,10 @@ window.__solmar = {
   startTaxi: () => startTaxiFare(state),
   startRace: () => { startRace(state); updateMarker(state); },
   setClock: (minutes) => { state.clockMinutes = minutes; },
+  weather: () => state.weather.type,
+  setWeather: (t) => { state.weather.type = t; state.weather.timer = 600; },
+  startVan: () => startVan(state),
+  carModels: () => CAR_MODELS.map((m) => m.name),
 };
 
 if (shot) runShot(shot);

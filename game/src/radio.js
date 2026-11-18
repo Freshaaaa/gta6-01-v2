@@ -36,6 +36,14 @@ const STATIONS = [
     kick: [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0],
     wave: 'triangle',
   },
+  {
+    // Bay FM — 140 bpm, funk: square-wave bass stabs + four-on-floor kick.
+    bpm: 140,
+    bass: [55, 0, 65.41, 0, 82.41, 0, 65.41, 0, 55, 0, 65.41, 0, 98, 0, 82.41, 0],
+    hat: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+    kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    wave: 'square',
+  },
 ];
 
 export function createAudio() {
@@ -48,6 +56,8 @@ export function createAudio() {
   let sirenGain = null;
   let rotorGain = null;
   let rotorWanted = false;
+  let rainGain = null;
+  let rainWanted = false;
   let muted = false;
   let musicTimer = null;
   let step = 0;
@@ -86,10 +96,35 @@ export function createAudio() {
       sirenOsc.connect(sirenGain);
       sirenOsc.start();
       buildRotor();
+      buildRain();
       return true;
     } catch {
       return false;
     }
+  }
+
+  // Steady rain: looped filtered noise. Gain follows rain(on); built once
+  // in ensure(), next to the rotor loop.
+  function buildRain() {
+    rainGain = ctx.createGain();
+    rainGain.gain.value = rainWanted && !muted ? 0.05 : 0;
+    rainGain.connect(master);
+    const len = ctx.sampleRate;
+    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < len; i += 1) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1200;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.5;
+    src.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(rainGain);
+    src.start();
   }
 
   // Helicopter rotor: looped low noise + a low hum, amplitude-modulated by
@@ -209,9 +244,12 @@ export function createAudio() {
       if (rotorGain && ctx) {
         rotorGain.gain.setTargetAtTime(rotorWanted && !muted ? 0.08 : 0, ctx.currentTime, 0.1);
       }
+      if (rainGain && ctx) {
+        rainGain.gain.setTargetAtTime(rainWanted && !muted ? 0.05 : 0, ctx.currentTime, 0.1);
+      }
     },
     isMuted() { return muted; },
-    // Cycle to the next radio station (0..2); returns the new station name.
+    // Cycle to the next radio station (0..3); returns the new station name.
     nextStation() {
       station = (station + 1) % STATIONS.length;
       step = 0;
@@ -241,6 +279,12 @@ export function createAudio() {
       rotorWanted = !!on;
       if (!ctx || !rotorGain) return;
       rotorGain.gain.setTargetAtTime(rotorWanted && !muted ? 0.08 : 0, ctx.currentTime, 0.15);
+    },
+    // Rain noise loop; call with true while it is raining or storming.
+    rain(on) {
+      rainWanted = !!on;
+      if (!ctx || !rainGain) return;
+      rainGain.gain.setTargetAtTime(rainWanted && !muted ? 0.05 : 0, ctx.currentTime, 0.3);
     },
     gunshot() { noise(0.12, 0.5, 3000); tone(180, 0.08, 'square', 0.25, 0, 60); },
     enemyShot() { noise(0.1, 0.25, 2200); },

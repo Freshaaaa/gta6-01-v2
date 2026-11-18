@@ -14,6 +14,7 @@ export const ACTION_WEAPON_NEXT = 'weaponNext'; // Q — cycle weapon
 export const ACTION_WEAPON_1 = 'weapon1'; // 1 — pistol
 export const ACTION_WEAPON_2 = 'weapon2'; // 2 — SMG
 export const ACTION_WEAPON_3 = 'weapon3'; // 3 — shotgun
+export const ACTION_WEAPON_4 = 'weapon4'; // 4 — rifle
 export const ACTION_TAXI = 'taxi';       // T — start a taxi fare
 export const ACTION_RACE = 'race';       // Y — start a street race
 
@@ -34,6 +35,7 @@ const KEY_BINDINGS = {
   Digit1: 'weapon1',
   Digit2: 'weapon2',
   Digit3: 'weapon3',
+  Digit4: 'weapon4',
   Enter: 'confirm', Space: 'confirm',
   KeyH: 'help',
 };
